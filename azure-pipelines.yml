@@ -1,0 +1,75 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  IMAGE_TAG: $(Build.SourceVersion)
+
+stages:
+  - stage: BuildPush
+    jobs:
+      - job: BuildPush
+        steps:
+          - checkout: self
+
+          - task: Bash@3
+            displayName: "Build jar (Gradle)"
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                chmod +x gradlew
+                ./gradlew clean bootJar
+
+          - task: Bash@3
+            displayName: "Configure AWS + Login ECR"
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                pip3 install --user awscli
+                export PATH=$PATH:$HOME/.local/bin
+
+                aws configure set aws_access_key_id $(AWS_ACCESS_KEY_ID)
+                aws configure set aws_secret_access_key $(AWS_SECRET_ACCESS_KEY)
+                aws configure set region $(AWS_REGION)
+
+                aws ecr get-login-password --region $(AWS_REGION) \
+                  | docker login --username AWS --password-stdin $(ECR_REPO_URI)
+
+          - task: Bash@3
+            displayName: "Build + Push Docker image"
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                docker build -t $(ECR_REPO_URI):$(IMAGE_TAG) -t $(ECR_REPO_URI):latest .
+                docker push $(ECR_REPO_URI):$(IMAGE_TAG)
+                docker push $(ECR_REPO_URI):latest
+
+  - stage: Deploy
+    dependsOn: BuildPush
+    jobs:
+      - job: Deploy
+        steps:
+          - task: Bash@3
+            displayName: "Force ECS Deployment"
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                pip3 install --user awscli
+                export PATH=$PATH:$HOME/.local/bin
+
+                aws configure set aws_access_key_id $(AWS_ACCESS_KEY_ID)
+                aws configure set aws_secret_access_key $(AWS_SECRET_ACCESS_KEY)
+                aws configure set region $(AWS_REGION)
+
+                aws ecs update-service \
+                  --cluster $(ECS_CLUSTER) \
+                  --service $(ECS_SERVICE) \
+                  --force-new-deployment

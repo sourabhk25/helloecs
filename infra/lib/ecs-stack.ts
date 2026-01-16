@@ -51,6 +51,7 @@ export class EcsHelloStack extends cdk.Stack {
             emptyOnDelete: true,
         });
 
+        // CloudWatch LogGroup
         const logGroup = new logs.LogGroup(this, "LogGroup", {
             logGroupName: `/ecs/${appName}`,
             retention: logs.RetentionDays.ONE_WEEK,
@@ -67,6 +68,7 @@ export class EcsHelloStack extends cdk.Stack {
             ],
         });
 
+        // Fargate Task Definition
         const taskDef = new ecs.FargateTaskDefinition(this, "TaskDef", {
             cpu,
             memoryLimitMiB: memoryMiB,
@@ -111,7 +113,7 @@ export class EcsHelloStack extends cdk.Stack {
             serviceName: `${appName}-service`,
             securityGroups: [svcSg],
             vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-            // optional: helps reduce chance of "NotStabilized" during deployments
+            // helps reduce chance of "NotStabilized" during deployments
             minHealthyPercent: 100,
             maxHealthyPercent: 200,
         });
